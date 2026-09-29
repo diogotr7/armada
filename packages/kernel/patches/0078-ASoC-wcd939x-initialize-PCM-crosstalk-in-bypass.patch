@@ -1,0 +1,39 @@
+Subject: [PATCH] ASoC: wcd939x: initialize PCM crosstalk with compander bypass
+
+PCM PA startup always enables the crosstalk path, but DAC startup
+returns before programming its coefficients when the compander is
+disabled. Starting directly in bypass mode therefore leaves the
+coefficients at their reset values. Playback that first enabled the
+compander inherits its coefficients and hides the missing initialization.
+
+Program the crosstalk coefficients before the compander bypass branch,
+so PCM startup does not depend on an earlier compander-enabled stream.
+Keep compander thresholds, clocks and reset programming conditional.
+
+---
+--- a/sound/soc/codecs/wcd939x.c
++++ b/sound/soc/codecs/wcd939x.c
+@@ -535,6 +535,11 @@
+ 					      WCD939X_REFBUFF_UHQA_CTL_REFBUFN_IOUT_CTL, 1);
+ 	}
+ 
++	/* The PCM crosstalk path is enabled even with the compander bypassed. */
++	snd_soc_component_write(component, sec_base + 0, 0x1f);
++	snd_soc_component_write(component, sec_base + 3, 0x4f);
++	snd_soc_component_write(component, sec_base + 2, 0x11);
++
+ 	if (!comp_en) {
+ 		/* compander bypassed, gain from register */
+ 		if (hphr)
+@@ -583,11 +588,6 @@
+ 	else
+ 		snd_soc_component_write_field(component, WCD939X_DIGITAL_CDC_COMP_CTL_0,
+ 					      WCD939X_CDC_COMP_CTL_0_HPHL_COMP_EN, true);
+-
+-	/* crosstalk coefficients (stock: scale 0x1f, sec2/3 0x11/0x4f) */
+-	snd_soc_component_write(component, sec_base + 0, 0x1f);
+-	snd_soc_component_write(component, sec_base + 3, 0x4f);
+-	snd_soc_component_write(component, sec_base + 2, 0x11);
+ }
+ 
+ static void wcd939x_hph_pcm_post_dac(struct snd_soc_component *component)

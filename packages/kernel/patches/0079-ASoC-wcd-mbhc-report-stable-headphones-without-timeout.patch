@@ -1,0 +1,64 @@
+Subject: [PATCH] ASoC: wcd-mbhc: report stable headphones without timeout
+
+A headphone inserted with the PA disabled can initially trigger the
+cross-connection check while the readings settle. The correction worker
+subsequently classifies the plug as headphones with no cross connection,
+but unconditionally continues until its three-second deadline.
+
+On Odin 3, tracing shows valid headphone readings after about 0.4 seconds
+while the insertion report is delayed until about 3.1 seconds. A quick
+replug with the PA still enabled takes the existing early-report path.
+
+Count consecutive headphone results with no cross connection and finish
+correction once the existing swap threshold is reached. Reset the count
+on other plug types, active PA, crossed readings or measurement errors.
+Keep the existing timeout for other classifications and use the normal
+post-detection cleanup and reporting path. This follows the vendor
+strategy of accepting stable non-crossed results during correction,
+limited here to the reproduced headphone case.
+
+---
+--- a/sound/soc/codecs/wcd-mbhc-v2.c
++++ b/sound/soc/codecs/wcd-mbhc-v2.c
+@@ -1178,6 +1178,7 @@
+ 	enum wcd_mbhc_plug_type plug_type = MBHC_PLUG_TYPE_INVALID;
+ 	unsigned long timeout;
+ 	int pt_gnd_mic_swap_cnt = 0;
++	int stable_headphone_cnt = 0;
+ 	int output_mv, cross_conn, hs_threshold, try = 0, micbias_mv;
+ 	bool is_spl_hs = false;
+ 	bool is_pa_on;
+@@ -1256,6 +1257,8 @@
+ 		output_mv = wcd_measure_adc_once(mbhc, MUX_CTL_IN2P);
+ 		plug_type = wcd_mbhc_get_plug_from_adc(mbhc, output_mv);
+ 		is_pa_on = wcd_mbhc_read_field(mbhc, WCD_MBHC_HPH_PA_EN);
++		if (plug_type != MBHC_PLUG_TYPE_HEADPHONE || is_pa_on)
++			stable_headphone_cnt = 0;
+ 
+ 		if (output_mv > hs_threshold && !is_spl_hs) {
+ 			is_spl_hs = wcd_mbhc_check_for_spl_headset(mbhc);
+@@ -1271,6 +1274,7 @@
+ 			/* Check for cross connection*/
+ 			cross_conn = wcd_check_cross_conn(mbhc);
+ 			if (cross_conn > 0) { /* cross-connection */
++				stable_headphone_cnt = 0;
+ 				pt_gnd_mic_swap_cnt++;
+ 				if (pt_gnd_mic_swap_cnt < mbhc->swap_thr)
+ 					continue;
+@@ -1279,9 +1283,15 @@
+ 			} else if (!cross_conn) { /* no cross connection */
+ 				pt_gnd_mic_swap_cnt = 0;
+ 				plug_type = wcd_mbhc_get_plug_from_adc(mbhc, output_mv);
++				/* Report a stable headphone without waiting for timeout. */
++				if (plug_type == MBHC_PLUG_TYPE_HEADPHONE &&
++				    ++stable_headphone_cnt >= mbhc->swap_thr)
++					break;
+ 				continue;
+-			} else /* Error if (cross_conn < 0) */
++			} else { /* Error if (cross_conn < 0) */
++				stable_headphone_cnt = 0;
+ 				continue;
++			}
+ 
+ 			if (pt_gnd_mic_swap_cnt == mbhc->swap_thr) {
+ 				/* US_EU gpio present, flip switch */
