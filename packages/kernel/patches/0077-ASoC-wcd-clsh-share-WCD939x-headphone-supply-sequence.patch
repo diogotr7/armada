@@ -1,0 +1,47 @@
+Subject: [PATCH] ASoC: wcd-clsh: share the WCD939x headphone supply sequence
+
+The left and right headphone callbacks each run force_iq_ctl(), which
+puts the shared regulator in its startup configuration. Only the first
+flyback/buck user then runs the transition to normal operation. Starting
+the second channel therefore leaves CLASSH_MODE_2 at 0x1c instead of 0x3a,
+CLASSH_MODE_3 bit 1 set, and FLYBACK_VNEGDAC_CTRL_2 at 0xb8 instead of
+0xf8.
+On Odin 3 this produces reproducible warbling during stereo playback.
+
+Reference-count the WCD939x headphone pair as one supply consumer. Run
+the existing startup sequence for the first channel and the existing
+shutdown sequence after the last channel stops. Keep the supply counters
+for other consumers and the behavior of other codec variants unchanged.
+
+---
+--- a/sound/soc/codecs/wcd-clsh-v2.c
++++ b/sound/soc/codecs/wcd-clsh-v2.c
+@@ -12,6 +12,7 @@
+ struct wcd_clsh_ctrl {
+ 	int state;
+ 	int mode;
++	int hph_users;
+ 	int flyback_users;
+ 	int buck_users;
+ 	int clsh_users;
+@@ -777,6 +778,20 @@
+ static int _wcd_clsh_ctrl_set_state(struct wcd_clsh_ctrl *ctrl, int req_state,
+ 				    bool is_enable, int mode)
+ {
++	/* Both headphone channels use the same WCD939x supply sequence. */
++	if (ctrl->codec_version == WCD939X &&
++	    (req_state == WCD_CLSH_STATE_HPHL || req_state == WCD_CLSH_STATE_HPHR)) {
++		if (is_enable) {
++			if (ctrl->hph_users++)
++				return 0;
++		} else {
++			if (WARN_ON_ONCE(!ctrl->hph_users))
++				return -EINVAL;
++			if (--ctrl->hph_users)
++				return 0;
++		}
++	}
++
+ 	switch (req_state) {
+ 	case WCD_CLSH_STATE_EAR:
+ 		if (ctrl->codec_version >= WCD937X)
