@@ -1,0 +1,36 @@
+Subject: [PATCH] ASoC: wcd939x: fix headphone analog volume controls
+
+The headphone gain fields are in HPH_NEW_INT_PA_GAIN_CTL_L/R. The low
+bits of HPH_L_EN/R_EN do not control PA gain on WCD939x. Point the ALSA
+controls at the actual five-bit fields, preserving the other register bits.
+
+The hardware codes run from +6 dB at zero to -30 dB at 24 in 1.5 dB
+steps. Expose an inverted, increasing ALSA scale with no mute code, as
+opposed to the existing 0.07 dB scale. ALSA value 20 then selects 0 dB.
+This does not change the gain source selection or compander setup.
+
+---
+--- a/sound/soc/codecs/wcd939x.c
++++ b/sound/soc/codecs/wcd939x.c
+@@ -220,7 +220,7 @@
+ };
+ 
+ static const SNDRV_CTL_TLVD_DECLARE_DB_MINMAX(ear_pa_gain, 600, -1800);
+-static const DECLARE_TLV_DB_SCALE(line_gain, 0, 7, 1);
++static const DECLARE_TLV_DB_SCALE(line_gain, -3000, 150, 0);
+ static const DECLARE_TLV_DB_SCALE(analog_gain, 0, 25, 1);
+ 
+ static const struct wcd_mbhc_field wcd_mbhc_fields[WCD_MBHC_REG_FUNC_MAX] = {
+@@ -2818,8 +2818,10 @@
+ 		       wcd939x_get_swr_port, wcd939x_set_swr_port),
+ 	SOC_SINGLE_EXT("DSD_R Switch", WCD939X_DSD_R, 0, 1, 0,
+ 		       wcd939x_get_swr_port, wcd939x_set_swr_port),
+-	SOC_SINGLE_TLV("HPHL Volume", WCD939X_HPH_L_EN, 0, 20, 1, line_gain),
+-	SOC_SINGLE_TLV("HPHR Volume", WCD939X_HPH_R_EN, 0, 20, 1, line_gain),
++	SOC_SINGLE_TLV("HPHL Volume", WCD939X_HPH_NEW_INT_PA_GAIN_CTL_L,
++		       0, 24, 1, line_gain),
++	SOC_SINGLE_TLV("HPHR Volume", WCD939X_HPH_NEW_INT_PA_GAIN_CTL_R,
++		       0, 24, 1, line_gain),
+ 	SOC_SINGLE_EXT("LDOH Enable Switch", SND_SOC_NOPM, 0, 1, 0,
+ 		       wcd939x_ldoh_get, wcd939x_ldoh_put),
+ 
