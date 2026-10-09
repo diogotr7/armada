@@ -1,0 +1,65 @@
+From: Diogo Trindade <diogotr7@gmail.com>
+Subject: [PATCH] ASoC: codecs: wcd-clsh: sequence the shared headphone supply
+ once
+
+From WCD937x on, the HPHL and HPHR Class-H handlers run the same supply
+sequence. Each puts the regulator in its forced-IQ startup configuration
+(CLASSH_MODE_2 = 0x1c, CLASSH_MODE_3 bit 1 set, FLYBACK_VNEGDAC_CTRL_2
+bits 7:5 = 0b101) and relies on the flyback and buck enables to move it
+to the operating configuration (0x3a, bit 1 clear, 0b111). The enables are
+reference counted and only act for the first user. When the second
+headphone channel starts, the startup configuration is written again and
+nothing leaves it while both channels are playing.
+
+Stopping the first of two channels has the opposite problem. It returns
+the HPH, flyback and buck modes to their defaults and releases the forced
+IQ settings while the other channel is still playing.
+
+Qualcomm's downstream driver avoids both by treating left plus right as a
+combined state, whose transitions leave the supply alone. Do the same:
+skip a v3 headphone handler while the other headphone channel is active,
+so that only the first channel to start and the last one to stop
+sequence the shared supply.
+
+On an AYN Odin 3 (WCD9395), stereo headphone playback without this
+change reads back CLASSH_MODE_2/CLASSH_MODE_3/FLYBACK_VNEGDAC_CTRL_2 as
+0x1c/0xf2/0xb8 and warbles audibly; with the pair sequenced once they
+read 0x3a/0xf0/0xf8 and the warble is gone.
+
+Fixes: 19c5d1f6a0c3 ("ASoC: codecs: wcd-clsh: add new version support")
+---
+ sound/soc/codecs/wcd-clsh-v2.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/sound/soc/codecs/wcd-clsh-v2.c b/sound/soc/codecs/wcd-clsh-v2.c
+index e1465b9..6e1517d 100644
+--- a/sound/soc/codecs/wcd-clsh-v2.c
++++ b/sound/soc/codecs/wcd-clsh-v2.c
+@@ -544,6 +544,13 @@ static void wcd_clsh_v3_state_hph_r(struct wcd_clsh_ctrl *ctrl, int req_state,
+ 		return;
+ 	}
+ 
++	/*
++	 * Both headphone channels share one supply configuration, which only
++	 * the first channel to start and the last one to stop may sequence.
++	 */
++	if (ctrl->state & WCD_CLSH_STATE_HPHL)
++		return;
++
+ 	if (is_enable) {
+ 		wcd_clsh_v3_set_buck_regulator_mode(component, mode);
+ 		wcd_clsh_v3_set_flyback_mode(component, mode);
+@@ -634,6 +641,13 @@ static void wcd_clsh_v3_state_hph_l(struct wcd_clsh_ctrl *ctrl, int req_state,
+ 		return;
+ 	}
+ 
++	/*
++	 * Both headphone channels share one supply configuration, which only
++	 * the first channel to start and the last one to stop may sequence.
++	 */
++	if (ctrl->state & WCD_CLSH_STATE_HPHR)
++		return;
++
+ 	if (is_enable) {
+ 		wcd_clsh_v3_set_buck_regulator_mode(component, mode);
+ 		wcd_clsh_v3_set_flyback_mode(component, mode);

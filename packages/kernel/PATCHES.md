@@ -627,15 +627,19 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
 - `patches/0076-ASoC-wcd939x-fix-headphone-analog-volume-controls.patch`
   source: armada
   upstream: local
-  notes: The WCD939x headphone PA gain controls previously addressed the gain-source selection registers. Use the actual five-bit PA gain fields and their -30 to +6 dB scale. The Odin 3 UCM initializes both controls to 0 dB; other WCD939x boards have not been listening-tested with the corrected controls.
-- `patches/0077-ASoC-wcd-clsh-share-WCD939x-headphone-supply-sequence.patch`
+  notes: Intended for mainline submission; not yet sent. The WCD939x HPHL/HPHR Volume controls addressed spare bits in HPH_L_EN/HPH_R_EN (a wcd938x carry-over), leaving the PA at its +6 dB reset gain. They now drive the PA gain fields (+6 to -30 dB in 1.5 dB steps); control value 20 is 0 dB. Applies to torvalds master. No alsa-ucm-conf WCD939x profile writes these controls, so other boards keep the reset gain.
+- `patches/0077-ASoC-wcd-clsh-track-the-active-outputs-as-a-bitmask.patch`
   source: armada
   upstream: local
-  notes: Treat the WCD939x left and right headphone channels as one Class-H supply consumer. Odin 3 stereo new/old/new playback and physical supply-register comparisons support the correction. Left-only and stereo-to-right live routes retained the expected supply state; cold right-only did not activate its DAPM path, and re-enabling left during a right-only stream produced an I/O error without attribution to this patch. General per-channel and concurrent-consumer behavior remain unproven; other codec versions retain their prior sequencing.
-- `patches/0078-ASoC-wcd939x-initialize-PCM-crosstalk-in-bypass.patch`
+  notes: Intended for mainline submission; not yet sent. Prerequisite for 0078. The Class-H state is documented and read (by wcd9335) as a bit mask of active outputs, but was overwritten with the last requested output. Applies to torvalds master.
+- `patches/0078-ASoC-wcd-clsh-sequence-the-shared-headphone-supply-once.patch`
   source: armada
   upstream: local
-  notes: Follow-up to the downstream 0073 PCM path. Its PA startup enables crosstalk even when the compander is bypassed, so write the existing coefficients before the bypass return. Fresh-boot Odin 3 captures showed the previous zero-coefficient state and its correction.
+  notes: Intended for mainline submission; not yet sent. Affects WCD937x/938x/939x. Each v3 headphone handler re-ran the forced-IQ supply startup for the second channel, and the first channel to stop tore the supply down under the other. Only the first channel to start and the last to stop now sequence it, as in Qualcomm's combined-state FSM. Supersedes the earlier WCD939x-only counter, whose stereo A/B on Odin 3 removed the warble; this generic form needs its own device test before submission.
+- `patches/0079-ASoC-wcd939x-program-PCM-crosstalk-with-compander-bypassed.patch`
+  source: armada
+  upstream: local
+  notes: Follow-up to the downstream 0073 HPH PCM mode, not applicable to mainline. PA startup enables crosstalk even when the compander is bypassed, so the coefficients are now written before the bypass return. Fresh-boot Odin 3 captures showed the zero-coefficient state and its correction.
 - `patches/0612-ROCKNIX-odin3-q6apm-start-mi2s-port-at-prepare.patch`
   source: https://github.com/ROCKNIX/distribution/blob/bcf3b5bc574990b96543484575b06f912153a715/projects/ROCKNIX/devices/SM8550/patches/linux/0612-ROCKNIX-odin3-q6apm-start-mi2s-port-at-prepare.patch
   upstream: unknown

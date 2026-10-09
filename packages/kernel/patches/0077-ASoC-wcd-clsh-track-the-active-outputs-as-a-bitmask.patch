@@ -1,0 +1,35 @@
+From: Diogo Trindade <diogotr7@gmail.com>
+Subject: [PATCH] ASoC: codecs: wcd-clsh: track the active outputs as a bitmask
+
+The Class-H state is documented as a bit mask of the active outputs, and
+wcd9335 tests it that way before reconfiguring the headphone mode when one
+headphone channel stops. wcd_clsh_ctrl_set_state() however replaces the
+state with whichever output was requested last, on both enable and
+disable, so the result of such a test depends on the order in which the
+outputs started and stopped rather than on which of them are active.
+
+Set the output's bit when it is enabled and clear it when it is disabled.
+---
+ sound/soc/codecs/wcd-clsh-v2.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/sound/soc/codecs/wcd-clsh-v2.c b/sound/soc/codecs/wcd-clsh-v2.c
+index 62ca22e..e1465b9 100644
+--- a/sound/soc/codecs/wcd-clsh-v2.c
++++ b/sound/soc/codecs/wcd-clsh-v2.c
+@@ -856,13 +856,14 @@ int wcd_clsh_ctrl_set_state(struct wcd_clsh_ctrl *ctrl,
+ 	switch (clsh_event) {
+ 	case WCD_CLSH_EVENT_PRE_DAC:
+ 		_wcd_clsh_ctrl_set_state(ctrl, nstate, CLSH_REQ_ENABLE, mode);
++		ctrl->state |= nstate;
+ 		break;
+ 	case WCD_CLSH_EVENT_POST_PA:
+ 		_wcd_clsh_ctrl_set_state(ctrl, nstate, CLSH_REQ_DISABLE, mode);
++		ctrl->state &= ~nstate;
+ 		break;
+ 	}
+ 
+-	ctrl->state = nstate;
+ 	ctrl->mode = mode;
+ 
+ 	return 0;

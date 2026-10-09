@@ -1,0 +1,49 @@
+From: Diogo Trindade <diogotr7@gmail.com>
+Subject: [PATCH] ASoC: wcd939x: program PCM crosstalk coefficients with the
+ compander bypassed
+
+HPH PCM PA startup enables the crosstalk path for both channels, but the
+PCM DAC startup returns before writing the crosstalk coefficients when the
+compander is disabled. Starting directly in bypass mode therefore runs
+the crosstalk path with its reset coefficients. A stream that enabled the
+compander earlier leaves the coefficients behind, which hides the missing
+initialization until the next cold boot.
+
+Write the coefficients before the bypass return, so PCM startup no longer
+depends on an earlier compander-enabled stream. Compander thresholds,
+clocking and reset stay conditional.
+
+This fixes the downstream HPH PCM mode (0073) and has no mainline
+counterpart.
+---
+ sound/soc/codecs/wcd939x.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/sound/soc/codecs/wcd939x.c b/sound/soc/codecs/wcd939x.c
+index 0022c70..e8f4b6b 100644
+--- a/sound/soc/codecs/wcd939x.c
++++ b/sound/soc/codecs/wcd939x.c
+@@ -535,6 +535,11 @@ static void wcd939x_hph_pcm_pre_dac(struct snd_soc_component *component,
+ 					      WCD939X_REFBUFF_UHQA_CTL_REFBUFN_IOUT_CTL, 1);
+ 	}
+ 
++	/* The PCM crosstalk path is enabled even with the compander bypassed. */
++	snd_soc_component_write(component, sec_base + 0, 0x1f);
++	snd_soc_component_write(component, sec_base + 3, 0x4f);
++	snd_soc_component_write(component, sec_base + 2, 0x11);
++
+ 	if (!comp_en) {
+ 		/* compander bypassed, gain from register */
+ 		if (hphr)
+@@ -583,11 +588,6 @@ static void wcd939x_hph_pcm_pre_dac(struct snd_soc_component *component,
+ 	else
+ 		snd_soc_component_write_field(component, WCD939X_DIGITAL_CDC_COMP_CTL_0,
+ 					      WCD939X_CDC_COMP_CTL_0_HPHL_COMP_EN, true);
+-
+-	/* crosstalk coefficients (stock: scale 0x1f, sec2/3 0x11/0x4f) */
+-	snd_soc_component_write(component, sec_base + 0, 0x1f);
+-	snd_soc_component_write(component, sec_base + 3, 0x4f);
+-	snd_soc_component_write(component, sec_base + 2, 0x11);
+ }
+ 
+ static void wcd939x_hph_pcm_post_dac(struct snd_soc_component *component)
