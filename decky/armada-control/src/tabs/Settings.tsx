@@ -13,9 +13,11 @@ import {
   setControllerType as applyControllerType,
   setMtpEnabled as applyMtpEnabled,
   setDesktopMode as applyDesktopMode,
+  setGyroEnabled as applyGyroEnabled,
   setSleepMode as applySleepMode,
   setSleepLogsEnabled as applySleepLogsEnabled,
   setSshEnabled as applySshEnabled,
+  setSwipeGesturesEnabled as applySwipeGesturesEnabled,
 } from "../backend";
 import { openCalibration } from "../components/Calibration";
 import { SelectEdit, SliderEdit, ToggleRow } from "../components/widgets";
@@ -32,6 +34,7 @@ export function Settings({ config, setConfig }: {
   config: Config;
   setConfig: Dispatch<SetStateAction<Config | null>>;
 }) {
+  const [swipeGesturesSaving, setSwipeGesturesSaving] = useState(false);
   const [sleepLogsEnabled, setSleepLogsEnabled] = useState<boolean | null>(null);
   const [sleepLogsSaving, setSleepLogsSaving] = useState(false);
   const setBottomScreenBrightness = useDebouncedApply(
@@ -126,6 +129,30 @@ export function Settings({ config, setConfig }: {
       setConfig((current) => (current ? { ...current, ablAutoEnabled: !enabled } : current));
     }
   };
+  const setSwipeGesturesEnabled = async (enabled: boolean) => {
+    if (swipeGesturesSaving) return;
+    setSwipeGesturesSaving(true);
+    try {
+      const applied = await applySwipeGesturesEnabled(enabled);
+      setConfig((current) => (current ? { ...current, swipeGesturesEnabled: applied } : current));
+    } catch (error) {
+      toaster.toast({ title: t("settings.swipeGesturesError"), body: String(error) });
+    } finally {
+      setSwipeGesturesSaving(false);
+    }
+  };
+  const setGyroEnabled = async (enabled: boolean) => {
+    if (enabled === !!config.gyroEnabled) {
+      return;
+    }
+    setConfig((current) => (current ? { ...current, gyroEnabled: enabled } : current));
+    try {
+      const applied = await applyGyroEnabled(enabled);
+      setConfig((current) => (current ? { ...current, gyroEnabled: applied } : current));
+    } catch (error) {
+      setConfig((current) => (current ? { ...current, gyroEnabled: !enabled } : current));
+    }
+  };
   const setBottomScreenEnabled = async (enabled: boolean) => {
     if (enabled === !!config.bottomScreenEnabled) {
       return;
@@ -186,6 +213,13 @@ export function Settings({ config, setConfig }: {
         <ButtonItem layout="below" onClick={openCalibration}>{t("calibration.launch")}</ButtonItem>
       </PanelSection>
       <PanelSection title={t("settings.system")}>
+        <ToggleRow
+          label={t("settings.swipeGestures")}
+          description={t("settings.swipeGesturesDescription")}
+          value={config.swipeGesturesEnabled}
+          disabled={swipeGesturesSaving}
+          onChange={setSwipeGesturesEnabled}
+        />
         <SelectEdit
           label={t("settings.sleepMode")}
           value={config.sleepMode || "s2idle"}
@@ -197,6 +231,9 @@ export function Settings({ config, setConfig }: {
         <Field label={t("settings.ablVersion")} description={config.ablVersion || t("common.unknown")} />
       </PanelSection>
       <PanelSection title={t("settings.experimental")}>
+        {config.gyroSupported && (
+          <ToggleRow label={t("settings.enableGyro")} value={!!config.gyroEnabled} onChange={setGyroEnabled} />
+        )}
         {config.bottomScreenSupported && (
           <>
             <ToggleRow
