@@ -624,6 +624,18 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
   source: armada
   upstream: local
   notes: AYANEO Pocket S2 and Pocket FIT fix. The WSA884x amplifier's POST_PMU sequence selects the SoundWire compander, but the unmute path immediately overrode it with the fixed CSR gain, discarding the boards' matched compander plus digital-volume configuration. The driver now keeps the compander selection when its port is enabled, gated on the `ayaneo,pocket-s2` and `konkr,pocket-fit` machine compatibles, so every other WSA884x machine keeps the original fixed-gain behavior. This requires a matching UCM that enables both macro companders, initializes both PA controls to 17 (hardware gain index 14, unity), and uses digital volume. Scoped to the Armada distribution; not a Linux upstream submission.
+- `patches/0076-ASoC-wcd939x-fix-headphone-analog-volume-controls.patch`
+  source: armada
+  upstream: local
+  notes: The WCD939x headphone PA gain controls previously addressed the gain-source selection registers. Use the actual five-bit PA gain fields and their -30 to +6 dB scale. The Odin 3 UCM initializes both controls to 0 dB; other WCD939x boards have not been listening-tested with the corrected controls.
+- `patches/0077-ASoC-wcd-clsh-share-WCD939x-headphone-supply-sequence.patch`
+  source: armada
+  upstream: local
+  notes: Treat the WCD939x left and right headphone channels as one Class-H supply consumer. Odin 3 stereo new/old/new playback and physical supply-register comparisons support the correction. Left-only and stereo-to-right live routes retained the expected supply state; cold right-only did not activate its DAPM path, and re-enabling left during a right-only stream produced an I/O error without attribution to this patch. General per-channel and concurrent-consumer behavior remain unproven; other codec versions retain their prior sequencing.
+- `patches/0078-ASoC-wcd939x-initialize-PCM-crosstalk-in-bypass.patch`
+  source: armada
+  upstream: local
+  notes: Follow-up to the downstream 0073 PCM path. Its PA startup enables crosstalk even when the compander is bypassed, so write the existing coefficients before the bypass return. Fresh-boot Odin 3 captures showed the previous zero-coefficient state and its correction.
 - `patches/0612-ROCKNIX-odin3-q6apm-start-mi2s-port-at-prepare.patch`
   source: https://github.com/ROCKNIX/distribution/blob/bcf3b5bc574990b96543484575b06f912153a715/projects/ROCKNIX/devices/SM8550/patches/linux/0612-ROCKNIX-odin3-q6apm-start-mi2s-port-at-prepare.patch
   upstream: unknown
