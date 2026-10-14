@@ -145,6 +145,8 @@ v9_20260729_qualcomm_crypto_qce_runtime_pm_interconnect.patch
 # ============== WiFi ==============
 1020-wifi-ath12k-send-the-computed-scan-priority-to-the-f.patch
 1021-wifi-ath12k-convert-scan-timeout-to-wiphy-delayed-work.patch
+1022-wifi-ath12k-set-DTIM-policy-to-stick-mode-for-station.patch
+1023-wifi-ath12k-apply-station-power-save-changes.patch
 
 # ============== Video decode ==============
 1030-media-iris-send-the-stream-POC-type.patch
