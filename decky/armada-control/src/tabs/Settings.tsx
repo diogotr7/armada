@@ -1,5 +1,5 @@
 import { toaster } from "@decky/api";
-import { ButtonItem, Field, PanelSection } from "@decky/ui";
+import { Field, PanelSection } from "@decky/ui";
 import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
@@ -13,14 +13,13 @@ import {
   setControllerType as applyControllerType,
   setMtpEnabled as applyMtpEnabled,
   setDesktopMode as applyDesktopMode,
-  setGyroEnabled as applyGyroEnabled,
   setSleepMode as applySleepMode,
   setSleepLogsEnabled as applySleepLogsEnabled,
   setSshEnabled as applySshEnabled,
   setSwipeGesturesEnabled as applySwipeGesturesEnabled,
 } from "../backend";
 import { openCalibration } from "../components/Calibration";
-import { SelectEdit, SliderEdit, ToggleRow } from "../components/widgets";
+import { ButtonRow, SelectEdit, SliderEdit, ToggleRow } from "../components/widgets";
 import { useDebouncedApply } from "../hooks/useDebouncedApply";
 import { t, translateLabel } from "../i18n";
 import { percentToPwm, pwmToPercent } from "../lib/fanCurve";
@@ -141,18 +140,6 @@ export function Settings({ config, setConfig }: {
       setSwipeGesturesSaving(false);
     }
   };
-  const setGyroEnabled = async (enabled: boolean) => {
-    if (enabled === !!config.gyroEnabled) {
-      return;
-    }
-    setConfig((current) => (current ? { ...current, gyroEnabled: enabled } : current));
-    try {
-      const applied = await applyGyroEnabled(enabled);
-      setConfig((current) => (current ? { ...current, gyroEnabled: applied } : current));
-    } catch (error) {
-      setConfig((current) => (current ? { ...current, gyroEnabled: !enabled } : current));
-    }
-  };
   const setBottomScreenEnabled = async (enabled: boolean) => {
     if (enabled === !!config.bottomScreenEnabled) {
       return;
@@ -210,7 +197,7 @@ export function Settings({ config, setConfig }: {
           options={(config.controllerTypes || []).map((option) => ({ ...option, label: translateLabel(option.label) }))}
           onChange={setControllerType}
         />
-        <ButtonItem layout="below" onClick={openCalibration}>{t("calibration.launch")}</ButtonItem>
+        <ButtonRow layout="below" onClick={openCalibration}>{t("calibration.launch")}</ButtonRow>
       </PanelSection>
       <PanelSection title={t("settings.system")}>
         <ToggleRow
@@ -231,9 +218,6 @@ export function Settings({ config, setConfig }: {
         <Field label={t("settings.ablVersion")} description={config.ablVersion || t("common.unknown")} />
       </PanelSection>
       <PanelSection title={t("settings.experimental")}>
-        {config.gyroSupported && (
-          <ToggleRow label={t("settings.enableGyro")} value={!!config.gyroEnabled} onChange={setGyroEnabled} />
-        )}
         {config.bottomScreenSupported && (
           <>
             <ToggleRow
