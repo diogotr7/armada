@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Diogo Trindade <diogotr7@gmail.com>
+Date: Thu, 15 Oct 2026 17:37:15 +0100
+Subject: [PATCH] ASoC: codecs: wcd939x-sdw: don't sync the compander LUT write
+ ports
+
+The HPHL/HPHR compander LUT write data registers are a write port: each
+LSB/MSB pair stores one coefficient at an auto-incrementing table index.
+They are listed in the register defaults, so the first regcache_sync()
+after the codec attaches writes 0x0000 into LUT entry 0. With the codec
+compander enabled, the headphone output is then muted whenever the
+signal reaches the top compander zone.
+
+Make them volatile and drop them from the defaults so they are never
+cached or synced.
+
+Fixes: be2af391cea0 ("ASoC: codecs: Add WCD939x Soundwire devices driver")
+Signed-off-by: Diogo Trindade <diogotr7@gmail.com>
+---
+ sound/soc/codecs/wcd939x-sdw.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/sound/soc/codecs/wcd939x-sdw.c b/sound/soc/codecs/wcd939x-sdw.c
+index 95f4be2..6fdfaa7 100644
+--- a/sound/soc/codecs/wcd939x-sdw.c
++++ b/sound/soc/codecs/wcd939x-sdw.c
+@@ -602,11 +602,7 @@ static const struct reg_default wcd939x_defaults[] = {
+ 	{ WCD939X_DIGITAL_DSM_1_STATIC_DATA_3, 0x00 },
+ 	{ WCD939X_RX_TOP_PAGE, 0x00 },
+ 	{ WCD939X_RX_TOP_TOP_CFG0, 0x00 },
+-	{ WCD939X_RX_TOP_HPHL_COMP_WR_LSB, 0x00 },
+-	{ WCD939X_RX_TOP_HPHL_COMP_WR_MSB, 0x00 },
+ 	{ WCD939X_RX_TOP_HPHL_COMP_LUT, 0x00 },
+-	{ WCD939X_RX_TOP_HPHR_COMP_WR_LSB, 0x00 },
+-	{ WCD939X_RX_TOP_HPHR_COMP_WR_MSB, 0x00 },
+ 	{ WCD939X_RX_TOP_HPHR_COMP_LUT, 0x00 },
+ 	{ WCD939X_RX_TOP_DSD0_DEBUG_CFG1, 0x05 },
+ 	{ WCD939X_RX_TOP_DSD0_DEBUG_CFG2, 0x08 },
+@@ -1296,8 +1292,12 @@ static bool wcd939x_volatile_register(struct device *dev, unsigned int reg)
+ 	case WCD939X_DIGITAL_PIN_STATUS_1:
+ 	case WCD939X_DIGITAL_MODE_STATUS_0:
+ 	case WCD939X_DIGITAL_MODE_STATUS_1:
++	case WCD939X_RX_TOP_HPHL_COMP_WR_LSB:
++	case WCD939X_RX_TOP_HPHL_COMP_WR_MSB:
+ 	case WCD939X_RX_TOP_HPHL_COMP_RD_LSB:
+ 	case WCD939X_RX_TOP_HPHL_COMP_RD_MSB:
++	case WCD939X_RX_TOP_HPHR_COMP_WR_LSB:
++	case WCD939X_RX_TOP_HPHR_COMP_WR_MSB:
+ 	case WCD939X_RX_TOP_HPHR_COMP_RD_LSB:
+ 	case WCD939X_RX_TOP_HPHR_COMP_RD_MSB:
+ 	case WCD939X_RX_TOP_DSD0_DEBUG_CFG5:
+-- 
+2.56.0
+
