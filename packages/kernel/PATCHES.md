@@ -630,6 +630,9 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
 - `patches/0623-ASoC-codecs-wcd939x-sdw-don-t-sync-the-compander-LUT.patch`
   source: armada
   upstream: local
+- `patches/0624-ASoC-codecs-wcd939x-sdw-program-the-Class-H-port-transport.patch`
+  source: armada
+  upstream: local
 - `patches/0060-ASoC-qcom-sc8280xp-enable-MI2S-bit-clock-on-BE-startup.patch`
   source: https://github.com/ROCKNIX/distribution/blob/bcf3b5bc574990b96543484575b06f912153a715/projects/ROCKNIX/devices/SM8750/patches/linux/0060-ASoC-qcom-sc8280xp-enable-MI2S-bit-clock-on-BE-startup.patch
   upstream: unknown

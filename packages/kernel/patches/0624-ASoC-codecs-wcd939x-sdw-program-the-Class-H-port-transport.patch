@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Diogo Trindade <diogotr7@gmail.com>
+Date: Thu, 15 Oct 2026 23:26:18 +0100
+Subject: [PATCH] ASoC: codecs: wcd939x-sdw: program the Class-H port transport
+
+The Class-H port is declared as a simple data port, so the SoundWire core
+never writes its DPN_HCtrl, DPN_BlockCtrl3 and DPN_OffsetCtrl2 registers.
+They keep their reset values (HCtrl 0x0f, BlockCtrl3 1) while the master
+sends the Class-H data in a narrower column window, so the codec samples
+the wrong columns. With a low-impedance headphone load the output then
+clips far below full scale.
+
+Declare the port as a full data port so these registers are programmed
+from the stream's transport parameters.
+
+Fixes: be2af391cea0 ("ASoC: codecs: Add WCD939x Soundwire devices driver")
+Signed-off-by: Diogo Trindade <diogotr7@gmail.com>
+---
+ sound/soc/codecs/wcd939x-sdw.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/sound/soc/codecs/wcd939x-sdw.c b/sound/soc/codecs/wcd939x-sdw.c
+index 6fdfaa7..68d811f 100644
+--- a/sound/soc/codecs/wcd939x-sdw.c
++++ b/sound/soc/codecs/wcd939x-sdw.c
+@@ -61,7 +61,7 @@ static struct sdw_dpn_prop wcd939x_rx_dpn_prop[WCD939X_MAX_RX_SWR_PORTS] = {
+ 	},
+ 	{
+ 		.num = WCD939X_CLSH_PORT,
+-		.type = SDW_DPN_SIMPLE,
++		.type = SDW_DPN_FULL,
+ 		.min_ch = 1,
+ 		.max_ch = 1,
+ 		.simple_ch_prep_sm = true,
+-- 
+2.56.0
+
