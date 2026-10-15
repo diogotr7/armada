@@ -231,7 +231,6 @@ v2_20260420_neil_armstrong_arm64_qcom_sm8650_misc_enhancements.patch
 0076-ASoC-wcd939x-fix-headphone-analog-volume-controls.patch
 0077-ASoC-wcd-clsh-track-the-active-outputs-as-a-bitmask.patch
 0078-ASoC-wcd-clsh-sequence-the-shared-headphone-supply-once.patch
-0079-ASoC-wcd939x-program-PCM-crosstalk-with-compander-bypassed.patch
 0612-ROCKNIX-odin3-q6apm-start-mi2s-port-at-prepare.patch
 0613-ASoC-q6apm-scope-prepare-start-to-MI2S.patch
 0528-ASoC-qcom-sc8280xp-suspend-the-card-and-its-streams.patch

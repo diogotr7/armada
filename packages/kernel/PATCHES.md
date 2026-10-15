@@ -662,10 +662,6 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
   source: armada
   upstream: local
   notes: Intended for mainline submission; not yet sent. Affects WCD937x/938x/939x. Each v3 headphone handler re-ran the forced-IQ supply startup for the second channel, and the first channel to stop tore the supply down under the other. Only the first channel to start and the last to stop now sequence it, as in Qualcomm's combined-state FSM. Measured on Odin 3 with 0076, 0077 and 0623: the headphone supply registers match the single-sequence state and the output no longer clips.
-- `patches/0079-ASoC-wcd939x-program-PCM-crosstalk-with-compander-bypassed.patch`
-  source: armada
-  upstream: local
-  notes: Follow-up to the downstream 0073 HPH PCM mode, not applicable to mainline. PA startup enables crosstalk even when the compander is bypassed, so the coefficients are now written before the bypass return. Fresh-boot Odin 3 captures showed the zero-coefficient state and its correction.
 - `patches/0612-ROCKNIX-odin3-q6apm-start-mi2s-port-at-prepare.patch`
   source: https://github.com/ROCKNIX/distribution/blob/bcf3b5bc574990b96543484575b06f912153a715/projects/ROCKNIX/devices/SM8550/patches/linux/0612-ROCKNIX-odin3-q6apm-start-mi2s-port-at-prepare.patch
   upstream: unknown
