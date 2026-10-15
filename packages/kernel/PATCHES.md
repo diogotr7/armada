@@ -658,7 +658,7 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
 - `patches/0078-ASoC-wcd-clsh-sequence-the-shared-headphone-supply-once.patch`
   source: armada
   upstream: local
-  notes: Intended for mainline submission; not yet sent. Affects WCD937x/938x/939x. Each v3 headphone handler re-ran the forced-IQ supply startup for the second channel, and the first channel to stop tore the supply down under the other. Only the first channel to start and the last to stop now sequence it, as in Qualcomm's combined-state FSM. Supersedes the earlier WCD939x-only counter, whose stereo A/B on Odin 3 removed the warble; this generic form needs its own device test before submission.
+  notes: Intended for mainline submission; not yet sent. Affects WCD937x/938x/939x. Each v3 headphone handler re-ran the forced-IQ supply startup for the second channel, and the first channel to stop tore the supply down under the other. Only the first channel to start and the last to stop now sequence it, as in Qualcomm's combined-state FSM. Measured on Odin 3 with 0076, 0077 and 0623: the headphone supply registers match the single-sequence state and the output no longer clips.
 - `patches/0079-ASoC-wcd939x-program-PCM-crosstalk-with-compander-bypassed.patch`
   source: armada
   upstream: local
