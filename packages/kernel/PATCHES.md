@@ -670,6 +670,10 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
 - `patches/0081-ASoC-wcd939x-fix-headphone-analog-volume-controls.patch`
   source: armada
   upstream: local
+- `patches/0082-ASoC-codecs-wcd939x-fix-the-headphone-Class-H-port-and-supply.patch`
+  source: armada
+  upstream: local
+  notes: Touches only the WCD939x driver; needs 0083 on SM8750, and the port change must not be applied without the supply change.
 - `patches/0074-soundwire-qcom-PCM-data-port-format-enable.patch`
   source: https://github.com/ROCKNIX/distribution/blob/bcf3b5bc574990b96543484575b06f912153a715/projects/ROCKNIX/devices/SM8750/patches/linux/0074-soundwire-qcom-PCM-data-port-format-enable.patch
   upstream: unknown
