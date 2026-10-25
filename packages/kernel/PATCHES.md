@@ -673,7 +673,7 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
 - `patches/0082-ASoC-codecs-wcd939x-fix-the-headphone-Class-H-port-and-supply.patch`
   source: armada
   upstream: local
-  notes: Touches only the WCD939x driver; the port change must not be applied without the supply change.
+  notes: Touches only the WCD939x driver; the port change must not be applied without the supply change, and on SM8750 it needs 0083.
 - `patches/0074-soundwire-qcom-PCM-data-port-format-enable.patch`
   source: https://github.com/ROCKNIX/distribution/blob/bcf3b5bc574990b96543484575b06f912153a715/projects/ROCKNIX/devices/SM8750/patches/linux/0074-soundwire-qcom-PCM-data-port-format-enable.patch
   upstream: unknown
@@ -899,6 +899,10 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
 - `patches/0564-soundwire-qcom-force-runtime-suspend-across-system-sleep.patch`
   source: armada
   upstream: local
+- `patches/0083-soundwire-qcom-program-the-SSP-period-on-SM8750.patch`
+  source: armada
+  upstream: local
+  notes: Limited to qcom,soundwire-v2.1.0 (SM8750) masters.
 - `patches/0565-pinctrl-qcom-sm8650-lpass-lpi-force-runtime-suspend-across-system-sleep.patch`
   source: armada
   upstream: local
