@@ -895,6 +895,10 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
 - `patches/0564-soundwire-qcom-force-runtime-suspend-across-system-sleep.patch`
   source: armada
   upstream: local
+- `patches/0083-soundwire-qcom-program-the-SSP-period-on-SM8550-and-SM8750.patch`
+  source: armada
+  upstream: local
+  notes: Limited to SM8550 and SM8750 machines, whose RX Class-H port interval does not divide the frame.
 - `patches/0565-pinctrl-qcom-sm8650-lpass-lpi-force-runtime-suspend-across-system-sleep.patch`
   source: armada
   upstream: local
