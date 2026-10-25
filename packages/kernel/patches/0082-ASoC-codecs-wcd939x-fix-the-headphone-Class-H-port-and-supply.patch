@@ -1,0 +1,98 @@
+From: Diogo Trindade <diogotr7@gmail.com>
+Subject: [PATCH] ASoC: codecs: wcd939x: fix the headphone Class-H port and
+ supply
+
+The Class-H port is declared as a simple data port, so its DPN_HCtrl and
+BlockCtrl3 keep their reset values while the RX master sends the Class-H
+data in a narrower column window, and the headphone output clips under a
+low-impedance load. Declare it as a full data port so the core programs
+it. That also requires the shared headphone supply to be sequenced once:
+each HPH PA re-ran the forced-IQ startup sequence and the first PA to
+stop tore the supply down under the other, so only the first HPH PA to
+start and the last to stop now drive the Class-H state.
+
+Fixes: 10f514bd172a ("ASoC: codecs: Add WCD939x Codec driver")
+Fixes: be2af391cea0 ("ASoC: codecs: Add WCD939x Soundwire devices driver")
+---
+ sound/soc/codecs/wcd939x-sdw.c |  2 +-
+ sound/soc/codecs/wcd939x.c     | 26 ++++++++++++++++++--------
+ 2 files changed, 19 insertions(+), 9 deletions(-)
+
+diff --git a/sound/soc/codecs/wcd939x-sdw.c b/sound/soc/codecs/wcd939x-sdw.c
+index 95f4be2..1be2721 100644
+--- a/sound/soc/codecs/wcd939x-sdw.c
++++ b/sound/soc/codecs/wcd939x-sdw.c
+@@ -61,7 +61,7 @@ static struct sdw_dpn_prop wcd939x_rx_dpn_prop[WCD939X_MAX_RX_SWR_PORTS] = {
+ 	},
+ 	{
+ 		.num = WCD939X_CLSH_PORT,
+-		.type = SDW_DPN_SIMPLE,
++		.type = SDW_DPN_FULL,
+ 		.min_ch = 1,
+ 		.max_ch = 1,
+ 		.simple_ch_prep_sm = true,
+diff --git a/sound/soc/codecs/wcd939x.c b/sound/soc/codecs/wcd939x.c
+index 80f3e72..b4746af 100644
+--- a/sound/soc/codecs/wcd939x.c
++++ b/sound/soc/codecs/wcd939x.c
+@@ -134,6 +134,8 @@ enum {
+ 	WCD_ADC3,
+ 	WCD_ADC4,
+ 	HPH_PA_DELAY,
++	HPHL_ACTIVE,
++	HPHR_ACTIVE,
+ };
+ 
+ enum {
+@@ -836,8 +838,10 @@ static int wcd939x_codec_enable_hphr_pa(struct snd_soc_dapm_widget *w,
+ 		if (wcd939x->hph_pcm_enabled)
+ 			wcd939x_hph_pcm_pre_pa(component, true);
+ 
+-		wcd_clsh_ctrl_set_state(wcd939x->clsh_info, WCD_CLSH_EVENT_PRE_DAC,
+-					WCD_CLSH_STATE_HPHR, hph_mode);
++		if (!test_bit(HPHL_ACTIVE, &wcd939x->status_mask))
++			wcd_clsh_ctrl_set_state(wcd939x->clsh_info, WCD_CLSH_EVENT_PRE_DAC,
++						WCD_CLSH_STATE_HPHR, hph_mode);
++		set_bit(HPHR_ACTIVE, &wcd939x->status_mask);
+ 		wcd_clsh_set_hph_mode(wcd939x->clsh_info, CLS_H_HIFI);
+ 
+ 		if (!wcd939x->hph_pcm_enabled &&
+@@ -947,8 +951,10 @@ static int wcd939x_codec_enable_hphr_pa(struct snd_soc_dapm_widget *w,
+ 		if (wcd939x->hph_pcm_enabled)
+ 			wcd939x_hph_pcm_post_pa(component, true);
+ 
+-		wcd_clsh_ctrl_set_state(wcd939x->clsh_info, WCD_CLSH_EVENT_POST_PA,
+-					WCD_CLSH_STATE_HPHR, hph_mode);
++		clear_bit(HPHR_ACTIVE, &wcd939x->status_mask);
++		if (!test_bit(HPHL_ACTIVE, &wcd939x->status_mask))
++			wcd_clsh_ctrl_set_state(wcd939x->clsh_info, WCD_CLSH_EVENT_POST_PA,
++						WCD_CLSH_STATE_HPHR, hph_mode);
+ 		if (wcd939x->ldoh)
+ 			snd_soc_component_write_field(component, WCD939X_LDOH_MODE,
+ 						      WCD939X_MODE_LDOH_EN, false);
+@@ -978,8 +984,10 @@ static int wcd939x_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
+ 		if (wcd939x->hph_pcm_enabled)
+ 			wcd939x_hph_pcm_pre_pa(component, false);
+ 
+-		wcd_clsh_ctrl_set_state(wcd939x->clsh_info, WCD_CLSH_EVENT_PRE_DAC,
+-					WCD_CLSH_STATE_HPHL, hph_mode);
++		if (!test_bit(HPHR_ACTIVE, &wcd939x->status_mask))
++			wcd_clsh_ctrl_set_state(wcd939x->clsh_info, WCD_CLSH_EVENT_PRE_DAC,
++						WCD_CLSH_STATE_HPHL, hph_mode);
++		set_bit(HPHL_ACTIVE, &wcd939x->status_mask);
+ 		wcd_clsh_set_hph_mode(wcd939x->clsh_info, CLS_H_HIFI);
+ 
+ 		if (!wcd939x->hph_pcm_enabled &&
+@@ -1085,8 +1093,10 @@ static int wcd939x_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
+ 					      WCD939X_PDM_WD_CTL0_PDM_WD_EN, 0);
+ 		if (wcd939x->hph_pcm_enabled)
+ 			wcd939x_hph_pcm_post_pa(component, false);
+-		wcd_clsh_ctrl_set_state(wcd939x->clsh_info, WCD_CLSH_EVENT_POST_PA,
+-					WCD_CLSH_STATE_HPHL, hph_mode);
++		clear_bit(HPHL_ACTIVE, &wcd939x->status_mask);
++		if (!test_bit(HPHR_ACTIVE, &wcd939x->status_mask))
++			wcd_clsh_ctrl_set_state(wcd939x->clsh_info, WCD_CLSH_EVENT_POST_PA,
++						WCD_CLSH_STATE_HPHL, hph_mode);
+ 		if (wcd939x->ldoh)
+ 			snd_soc_component_write_field(component, WCD939X_LDOH_MODE,
+ 						      WCD939X_MODE_LDOH_EN, false);
