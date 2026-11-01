@@ -1,0 +1,17 @@
+From: Armada <noreply@armada.local>
+Subject: [PATCH] input: rsinput: discard a partial frame on resume
+
+The MCU loses power across system sleep and restarts its stream on a new frame.
+A partial frame retained from before suspend is joined to that stream and fails
+its checksum, so clear it before the MCU is reinitialised.
+
+--- a/drivers/input/joystick/rsinput.c
++++ b/drivers/input/joystick/rsinput.c
+@@ -749,6 +749,7 @@
+ {
+     struct rsinput_driver *drv = dev_get_drvdata(dev);
+ 
++    drv->rx_len = 0;
+     return rsinput_init_commands(drv);
+ }
+ 

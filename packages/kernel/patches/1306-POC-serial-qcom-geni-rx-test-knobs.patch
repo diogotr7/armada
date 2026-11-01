@@ -1,0 +1,183 @@
+From: Armada <noreply@armada.local>
+Subject: [PATCH] POC: serial: qcom-geni: add RX stale timeout and flip queue test knobs
+
+Test only. Adds qcom,rx-stale-chars, a high-priority flip workqueue, and sysfs attributes to change them and the RX DMA length at runtime.
+
+--- a/drivers/tty/serial/qcom_geni_serial.c
++++ b/drivers/tty/serial/qcom_geni_serial.c
+@@ -25,6 +25,7 @@
+ #include <linux/slab.h>
+ #include <linux/tty.h>
+ #include <linux/tty_flip.h>
++#include <linux/workqueue.h>
+ #include <dt-bindings/interconnect/qcom,icc.h>
+ 
+ /* UART specific GENI registers */
+@@ -140,6 +141,9 @@
+ 	unsigned long clk_rate;
+ 	void *rx_buf;
+ 	u32 rx_dma_len;
++	u32 rx_stale_chars;
++	struct workqueue_struct *rx_hipri_wq;
++	bool rx_hipri;
+ 	u32 loopback;
+ 	bool brk;
+ 
+@@ -1198,7 +1202,7 @@
+ static int qcom_geni_serial_port_setup(struct uart_port *uport)
+ {
+ 	struct qcom_geni_serial_port *port = to_dev_port(uport);
+-	u32 rxstale = DEFAULT_BITS_PER_CHAR * STALE_TIMEOUT;
++	u32 rxstale = DEFAULT_BITS_PER_CHAR * port->rx_stale_chars;
+ 	u32 proto;
+ 	u32 pin_swap;
+ 	int ret;
+@@ -1809,6 +1813,117 @@
+ 	.pm = qcom_geni_serial_pm,
+ };
+ 
++static int geni_poc_restart_rx(struct device *dev, u32 stale, u32 len)
++{
++	struct qcom_geni_serial_port *port = dev_get_drvdata(dev);
++	struct uart_port *uport = &port->uport;
++	unsigned long flags;
++
++	if (!tty_port_initialized(&uport->state->port))
++		return -EIO;
++
++	uart_port_lock_irqsave(uport, &flags);
++	qcom_geni_serial_stop_rx(uport);
++	port->rx_stale_chars = stale;
++	port->rx_dma_len = len;
++	writel(DEFAULT_BITS_PER_CHAR * stale,
++	       uport->membase + SE_UART_RX_STALE_CNT);
++	qcom_geni_serial_start_rx(uport);
++	uart_port_unlock_irqrestore(uport, flags);
++	return 0;
++}
++
++static ssize_t rx_stale_chars_show(struct device *dev,
++				   struct device_attribute *attr, char *buf)
++{
++	struct qcom_geni_serial_port *port = dev_get_drvdata(dev);
++
++	return sysfs_emit(buf, "%u\n", port->rx_stale_chars);
++}
++
++static ssize_t rx_stale_chars_store(struct device *dev,
++				    struct device_attribute *attr,
++				    const char *buf, size_t count)
++{
++	struct qcom_geni_serial_port *port = dev_get_drvdata(dev);
++	u32 val;
++	int ret;
++
++	ret = kstrtou32(buf, 0, &val);
++	if (ret)
++		return ret;
++	if (!val || val > 1024)
++		return -EINVAL;
++	ret = geni_poc_restart_rx(dev, val, port->rx_dma_len);
++	return ret ?: count;
++}
++static DEVICE_ATTR_RW(rx_stale_chars);
++
++static ssize_t rx_dma_len_show(struct device *dev,
++			       struct device_attribute *attr, char *buf)
++{
++	struct qcom_geni_serial_port *port = dev_get_drvdata(dev);
++
++	return sysfs_emit(buf, "%u\n", port->rx_dma_len);
++}
++
++static ssize_t rx_dma_len_store(struct device *dev,
++				struct device_attribute *attr,
++				const char *buf, size_t count)
++{
++	struct qcom_geni_serial_port *port = dev_get_drvdata(dev);
++	u32 val;
++	int ret;
++
++	ret = kstrtou32(buf, 0, &val);
++	if (ret)
++		return ret;
++	if (val < DMA_RX_LEN_MIN || val > DMA_RX_BUF_SIZE || !IS_ALIGNED(val, 4))
++		return -EINVAL;
++	ret = geni_poc_restart_rx(dev, port->rx_stale_chars, val);
++	return ret ?: count;
++}
++static DEVICE_ATTR_RW(rx_dma_len);
++
++static ssize_t rx_hipri_show(struct device *dev,
++			     struct device_attribute *attr, char *buf)
++{
++	struct qcom_geni_serial_port *port = dev_get_drvdata(dev);
++
++	return sysfs_emit(buf, "%d\n", port->rx_hipri);
++}
++
++static ssize_t rx_hipri_store(struct device *dev,
++			      struct device_attribute *attr,
++			      const char *buf, size_t count)
++{
++	struct qcom_geni_serial_port *port = dev_get_drvdata(dev);
++	bool val;
++	int ret;
++
++	ret = kstrtobool(buf, &val);
++	if (ret)
++		return ret;
++	if (!port->rx_hipri_wq)
++		return -ENODEV;
++	port->rx_hipri = val;
++	tty_port_link_wq(&port->uport.state->port,
++			 val ? port->rx_hipri_wq : NULL);
++	return count;
++}
++static DEVICE_ATTR_RW(rx_hipri);
++
++static struct attribute *geni_poc_attrs[] = {
++	&dev_attr_rx_stale_chars.attr,
++	&dev_attr_rx_dma_len.attr,
++	&dev_attr_rx_hipri.attr,
++	NULL
++};
++
++static const struct attribute_group geni_poc_group = {
++	.attrs = geni_poc_attrs,
++};
++
+ static int qcom_geni_serial_probe(struct platform_device *pdev)
+ {
+ 	int ret = 0;
+@@ -1910,6 +2025,11 @@
+ 	 * for a full buffer. Let such ports ask for a shorter transfer so data
+ 	 * reaches the tty layer promptly. The buffer allocation is unchanged.
+ 	 */
++	port->rx_stale_chars = STALE_TIMEOUT;
++	if (!data->console)
++		of_property_read_u32(pdev->dev.of_node, "qcom,rx-stale-chars",
++				     &port->rx_stale_chars);
++
+ 	port->rx_dma_len = DMA_RX_BUF_SIZE;
+ 	if (!data->console &&
+ 	    !of_property_read_u32(pdev->dev.of_node, "qcom,rx-dma-len",
+@@ -1960,6 +2080,18 @@
+ 	if (ret)
+ 		goto error;
+ 
++	if (!data->console &&
++	    of_property_present(pdev->dev.of_node, "qcom,rx-stale-chars")) {
++		port->rx_hipri_wq = alloc_workqueue("geni_rx_hipri",
++						    WQ_HIGHPRI | WQ_PERCPU, 1);
++		if (port->rx_hipri_wq) {
++			port->rx_hipri = true;
++			tty_port_link_wq(&uport->state->port, port->rx_hipri_wq);
++		}
++		if (devm_device_add_group(&pdev->dev, &geni_poc_group))
++			dev_warn(&pdev->dev, "failed to add RX test attributes\n");
++	}
++
+ 	return 0;
+ 
+ error:

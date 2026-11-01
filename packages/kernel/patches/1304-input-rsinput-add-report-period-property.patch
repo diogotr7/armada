@@ -1,0 +1,36 @@
+From: Armada <noreply@armada.local>
+Subject: [PATCH] input: rsinput: add a report-period device property
+
+The MCU report period is hard-coded to 2 (about 250 Hz), but firmware revisions
+reach different rates at lower periods. Keep 2 as the default and let a device
+tree select another value.
+
+--- a/drivers/input/joystick/rsinput.c
++++ b/drivers/input/joystick/rsinput.c
+@@ -144,6 +144,7 @@
+     bool invert_y;
+     bool invert_rx;
+     bool invert_ry;
++    u32 report_period;
+     uint8_t rx_buf[1024];
+     size_t rx_len;
+     uint8_t sequence_number;
+@@ -237,7 +238,8 @@
+         DATA_COMMOD_SET_PAR,
+         0x01,
+         0x00, 0x00, 0x00, 0x06,
+-        0x00, 0x00, 0x00, 0x02
++        drv->report_period >> 24, (drv->report_period >> 16) & 0xff,
++        (drv->report_period >> 8) & 0xff, drv->report_period & 0xff
+     };
+     error = rsinput_send_command(drv, CMD_COMMOD, mcu_params, sizeof(mcu_params));
+     if (error < 0) {
+@@ -562,6 +564,8 @@
+ 
+     drv->trigger_release = RSINPUT_TRIGGER_RELEASE;
+     device_property_read_u32(&serdev->dev, "trigger-release", &drv->trigger_release);
++    drv->report_period = 2;
++    device_property_read_u32(&serdev->dev, "report-period", &drv->report_period);
+ 
+     drv->vdd = devm_regulator_get(&serdev->dev, "vdd");
+     if (IS_ERR(drv->vdd)) {

@@ -1,0 +1,117 @@
+From: Armada <noreply@armada.local>
+Subject: [PATCH] POC: input: rsinput: add report period and synthetic input test knobs
+
+Test only. Adds sysfs attributes to change the MCU report period and to toggle the left trigger on every frame, so every frame reaches userspace without physical input.
+
+--- a/drivers/input/joystick/rsinput.c
++++ b/drivers/input/joystick/rsinput.c
+@@ -145,6 +145,8 @@
+     bool invert_rx;
+     bool invert_ry;
+     u32 report_period;
++    bool poc_synth;
++    bool poc_phase;
+     uint8_t rx_buf[1024];
+     size_t rx_len;
+     uint8_t sequence_number;
+@@ -334,6 +336,11 @@
+     int16_t ry = raw_ry + axis_righty_center;
+     ry = ( abs(ry) < axis_righty_deadzone ) ? 0 : INT_SIGN(ry) * ( abs(ry) - axis_righty_antideadzone );
+ 
++    if (drv->poc_synth) {
++        drv->poc_phase = !drv->poc_phase;
++        z = trigger_left_max * (drv->poc_phase ? 3 : 4) / 10;
++    }
++
+     input_report_abs(drv->input, ABS_Z, z);
+     input_report_abs(drv->input, ABS_RZ, rz);
+     input_report_abs(drv->input, ABS_X, drv->invert_x ? x * (-1) : x);
+@@ -490,6 +497,8 @@
+     return 0;
+ }
+ 
++static const struct attribute_group rsinput_poc_group;
++
+ static int rsinput_probe(struct serdev_device *serdev) {
+     struct rsinput_driver *drv;
+     u32 gamepad_bus = 0;
+@@ -691,6 +700,9 @@
+         return error;
+     }
+ 
++    if (devm_device_add_group(&serdev->dev, &rsinput_poc_group))
++        dev_warn(&serdev->dev, "failed to add test attributes\n");
++
+     return 0;
+ }
+ 
+@@ -755,6 +767,69 @@
+ 
+ static DEFINE_SIMPLE_DEV_PM_OPS(rsinput_pm_ops, rsinput_suspend, rsinput_resume);
+ 
++static ssize_t report_period_show(struct device *dev,
++                                  struct device_attribute *attr, char *buf)
++{
++    struct rsinput_driver *drv = dev_get_drvdata(dev);
++
++    return sysfs_emit(buf, "%u\n", drv->report_period);
++}
++
++static ssize_t report_period_store(struct device *dev,
++                                   struct device_attribute *attr,
++                                   const char *buf, size_t count)
++{
++    struct rsinput_driver *drv = dev_get_drvdata(dev);
++    u32 val;
++    int error;
++
++    error = kstrtou32(buf, 0, &val);
++    if (error)
++        return error;
++    if (val > 100)
++        return -EINVAL;
++    drv->report_period = val;
++
++    uint8_t mcu_params[] = {
++        DATA_COMMOD_SET_PAR,
++        0x01,
++        0x00, 0x00, 0x00, 0x06,
++        val >> 24, (val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff
++    };
++    error = rsinput_send_command(drv, CMD_COMMOD, mcu_params, sizeof(mcu_params));
++    return error < 0 ? error : count;
++}
++static DEVICE_ATTR_RW(report_period);
++
++static ssize_t poc_synth_show(struct device *dev,
++                              struct device_attribute *attr, char *buf)
++{
++    struct rsinput_driver *drv = dev_get_drvdata(dev);
++
++    return sysfs_emit(buf, "%d\n", drv->poc_synth);
++}
++
++static ssize_t poc_synth_store(struct device *dev,
++                               struct device_attribute *attr,
++                               const char *buf, size_t count)
++{
++    struct rsinput_driver *drv = dev_get_drvdata(dev);
++    int error = kstrtobool(buf, &drv->poc_synth);
++
++    return error ?: count;
++}
++static DEVICE_ATTR_RW(poc_synth);
++
++static struct attribute *rsinput_poc_attrs[] = {
++    &dev_attr_report_period.attr,
++    &dev_attr_poc_synth.attr,
++    NULL
++};
++
++static const struct attribute_group rsinput_poc_group = {
++    .attrs = rsinput_poc_attrs,
++};
++
+ static const struct of_device_id rsinput_of_match[] = {
+     { .compatible = "gamepad,rsinput" },
+     { /* sentinel */ }
