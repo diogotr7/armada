@@ -1,0 +1,222 @@
+From: Armada <noreply@armada.local>
+Subject: [PATCH] POC: block on evdev and write one Deck report per source frame
+
+Test only. IP_POC_BLOCKING_SOURCE=0 and IP_POC_FRAME_SYNC=0 restore the stock behaviour.
+
+diff --git a/src/input/composite_device/mod.rs b/src/input/composite_device/mod.rs
+index cee6d85..5d2e3ad 100644
+--- a/src/input/composite_device/mod.rs
++++ b/src/input/composite_device/mod.rs
+@@ -801,6 +801,10 @@ impl CompositeDevice {
+             log::trace!("Refusing to send '{cap}' event to target devices.");
+             return Ok(());
+         }
++        if cap == Capability::Sync {
++            self.targets.write_event(event).await;
++            return Ok(());
++        }
+ 
+         // Check if the event needs to be translated based on the
+         // capability map. Translated events will be re-enqueued, so this will
+diff --git a/src/input/source/evdev.rs b/src/input/source/evdev.rs
+index 8abbba4..2981ffb 100644
+--- a/src/input/source/evdev.rs
++++ b/src/input/source/evdev.rs
+@@ -145,8 +145,21 @@ impl EventDevice {
+             }
+             DriverType::Gamepad => {
+                 let device = GamepadEventDevice::new(device_info.clone(), capability_map)?;
+-                let source_device =
+-                    SourceDriver::new(composite_device, device, device_info.into(), conf);
++                let source_device = if gamepad::poc_blocking_source() {
++                    let options = SourceDriverOptions {
++                        poll_rate: Duration::ZERO,
++                        buffer_size: 2048,
++                    };
++                    SourceDriver::new_with_options(
++                        composite_device,
++                        device,
++                        device_info.into(),
++                        options,
++                        conf,
++                    )
++                } else {
++                    SourceDriver::new(composite_device, device, device_info.into(), conf)
++                };
+                 Ok(Self::Gamepad(source_device))
+             }
+             DriverType::Touchscreen => {
+diff --git a/src/input/source/evdev/gamepad.rs b/src/input/source/evdev/gamepad.rs
+index fbe2a82..6c530b7 100644
+--- a/src/input/source/evdev/gamepad.rs
++++ b/src/input/source/evdev/gamepad.rs
+@@ -1,5 +1,5 @@
+ use std::fmt::Debug;
+-use std::os::fd::AsFd;
++use std::os::fd::{AsFd, AsRawFd};
+ use std::{collections::HashMap, error::Error};
+ 
+ use evdev::{
+@@ -128,6 +128,14 @@ impl SourceDriver<GamepadEventDevice> {
+     }
+ }
+ 
++pub fn poc_blocking_source() -> bool {
++    std::env::var("IP_POC_BLOCKING_SOURCE").map_or(true, |v| v != "0")
++}
++
++fn poc_frame_sync() -> bool {
++    std::env::var("IP_POC_FRAME_SYNC").map_or(true, |v| v != "0")
++}
++
+ impl GamepadEventDevice {
+     /// Create a new [Gamepad] source device from the given udev info
+     pub fn new(
+@@ -584,6 +592,15 @@ impl SourceInputDevice for GamepadEventDevice {
+             native_events.extend(translator.poll());
+         }
+ 
++        if poc_blocking_source() {
++            let mut fds = [nix::libc::pollfd {
++                fd: self.device.as_raw_fd(),
++                events: nix::libc::POLLIN,
++                revents: 0,
++            }];
++            unsafe { nix::libc::poll(fds.as_mut_ptr(), 1, 2) };
++        }
++
+         // Read events from the device
+         let events = {
+             let result = self.device.fetch_events();
+@@ -603,6 +620,10 @@ impl SourceInputDevice for GamepadEventDevice {
+             let events: Vec<InputEvent> = events.into_iter().collect();
+             events
+         };
++        let frame_sync = poc_frame_sync()
++            && events
++                .iter()
++                .any(|e| e.event_type() == EventType::SYNCHRONIZATION && e.code() == 0);
+ 
+         // Convert the events into native events if no translator exists
+         if self.translator.is_none() {
+@@ -611,6 +632,9 @@ impl SourceInputDevice for GamepadEventDevice {
+                 .filter_map(|e| self.translate(e))
+                 .collect();
+             native_events.extend(translated_events);
++            if frame_sync {
++                native_events.push(NativeEvent::new(Capability::Sync, crate::input::event::value::InputValue::Bool(true)));
++            }
+             return Ok(native_events);
+         }
+ 
+@@ -638,6 +662,9 @@ impl SourceInputDevice for GamepadEventDevice {
+             .filter_map(|e| self.translate(e))
+             .collect();
+         native_events.extend(translated_events);
++        if frame_sync {
++            native_events.push(NativeEvent::new(Capability::Sync, crate::input::event::value::InputValue::Bool(true)));
++        }
+ 
+         Ok(native_events)
+     }
+diff --git a/src/input/target/steam_deck_uhid.rs b/src/input/target/steam_deck_uhid.rs
+index e782832..6c650fb 100644
+--- a/src/input/target/steam_deck_uhid.rs
++++ b/src/input/target/steam_deck_uhid.rs
+@@ -68,6 +68,9 @@ pub struct SteamDeckUhidDevice {
+     requested_string_attribute: StringAttribute,
+     serial_number: String,
+     state: PackedInputDataReport,
++    poc_frame_sync: bool,
++    poc_sync_pending: bool,
++    poc_last_write: std::time::Instant,
+ }
+ 
+ impl SteamDeckUhidDevice {
+@@ -94,6 +97,9 @@ impl SteamDeckUhidDevice {
+             requested_string_attribute: StringAttribute::default(),
+             serial_number,
+             state: PackedInputDataReport::default(),
++            poc_frame_sync: std::env::var("IP_POC_FRAME_SYNC").map_or(true, |v| v != "0"),
++            poc_sync_pending: false,
++            poc_last_write: std::time::Instant::now(),
+         })
+     }
+ 
+@@ -117,6 +123,19 @@ impl SteamDeckUhidDevice {
+         Ok(device)
+     }
+ 
++    fn poc_write_state(&mut self) -> Result<(), Box<dyn Error>> {
++        if self.poc_frame_sync {
++            if !self.poc_sync_pending && self.poc_last_write.elapsed() < Duration::from_millis(3) {
++                return Ok(());
++            }
++            self.poc_sync_pending = false;
++            self.poc_last_write = std::time::Instant::now();
++            let frame = self.state.frame.to_primitive();
++            self.state.frame = Integer::from_primitive(frame.wrapping_add(1));
++        }
++        self.write_state()
++    }
++
+     /// Write the current device state to the device
+     fn write_state(&mut self) -> Result<(), Box<dyn Error>> {
+         let data = self.state.pack()?;
+@@ -796,6 +815,10 @@ impl TargetInputDevice for SteamDeckUhidDevice {
+     /// Update device state with input events
+     fn write_event(&mut self, event: NativeEvent) -> Result<(), InputError> {
+         log::trace!("Received event: {event:?}");
++        if event.as_capability() == Capability::Sync {
++            self.poc_sync_pending = true;
++            return Ok(());
++        }
+         self.update_state(event);
+ 
+         Ok(())
+@@ -803,6 +826,7 @@ impl TargetInputDevice for SteamDeckUhidDevice {
+ 
+     fn get_capabilities(&self) -> Result<Vec<Capability>, InputError> {
+         Ok(vec![
++            Capability::Sync,
+             Capability::Accelerometer(Source::Center),
+             Capability::Gamepad(Gamepad::Axis(GamepadAxis::LeftStick)),
+             Capability::Gamepad(Gamepad::Axis(GamepadAxis::RightStick)),
+@@ -905,8 +929,10 @@ impl TargetOutputDevice for SteamDeckUhidDevice {
+         };
+ 
+         // Increment the frame
+-        let frame = self.state.frame.to_primitive();
+-        self.state.frame = Integer::from_primitive(frame.wrapping_add(1));
++        if !self.poc_frame_sync {
++            let frame = self.state.frame.to_primitive();
++            self.state.frame = Integer::from_primitive(frame.wrapping_add(1));
++        }
+ 
+         let event = match device.read() {
+             Ok(event) => event,
+@@ -914,13 +940,13 @@ impl TargetOutputDevice for SteamDeckUhidDevice {
+                 StreamError::Io(_e) => {
+                     //log::error!("Error reading from UHID device: {e:?}");
+                     // Write the current state
+-                    self.write_state()?;
++                    self.poc_write_state()?;
+                     return Ok(vec![]);
+                 }
+                 StreamError::UnknownEventType(e) => {
+                     log::debug!("Unknown event type: {:?}", e);
+                     // Write the current state
+-                    self.write_state()?;
++                    self.poc_write_state()?;
+                     return Ok(vec![]);
+                 }
+             },
+@@ -1001,7 +1027,7 @@ impl TargetOutputDevice for SteamDeckUhidDevice {
+         };
+ 
+         // Write the current state
+-        self.write_state()?;
++        self.poc_write_state()?;
+ 
+         Ok(output_events)
+     }
