@@ -1,0 +1,22 @@
+From: Diogo Trindade <diogotr7@gmail.com>
+Subject: [PATCH] ASoC: codecs: wcd939x-sdw: ignore RX device interrupts
+
+Only the TX device has a regmap and the interrupt domain, so an alert from
+the RX device dereferences a NULL regmap and kills the bus IRQ thread.
+---
+ sound/soc/codecs/wcd939x-sdw.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/sound/soc/codecs/wcd939x-sdw.c b/sound/soc/codecs/wcd939x-sdw.c
+--- a/sound/soc/codecs/wcd939x-sdw.c
++++ b/sound/soc/codecs/wcd939x-sdw.c
+@@ -196,6 +196,9 @@ static int wcd9390_interrupt_callback(struct sdw_slave *slave,
+ {
+ 	struct wcd939x_sdw_priv *wcd = dev_get_drvdata(&slave->dev);
+ 
++	if (!wcd->is_tx)
++		return 0;
++
+ 	return wcd_interrupt_callback(slave, wcd->slave_irq, WCD939X_DIGITAL_INTR_STATUS_0,
+ 			WCD939X_DIGITAL_INTR_STATUS_1, WCD939X_DIGITAL_INTR_STATUS_2);
+ }

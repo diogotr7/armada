@@ -941,6 +941,9 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
   source: armada
   upstream: local
   notes: Limited to qcom,soundwire-v2.1.0 (SM8750) masters; cleared while the bus is idle.
+- `patches/0084-ASoC-codecs-wcd939x-sdw-ignore-RX-device-interrupts.patch`
+  source: armada
+  upstream: local
 - `patches/0565-pinctrl-qcom-sm8650-lpass-lpi-force-runtime-suspend-across-system-sleep.patch`
   source: armada
   upstream: local
