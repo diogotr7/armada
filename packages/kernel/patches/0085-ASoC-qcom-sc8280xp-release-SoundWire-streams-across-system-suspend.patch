@@ -1,0 +1,31 @@
+From: Diogo Trindade <diogotr7@gmail.com>
+Subject: [PATCH] ASoC: qcom: sc8280xp: release SoundWire streams across system suspend
+
+A stream left enabled through the bus clock stop can come back with the
+codec misaligned or silent. Release it with the suspended PCM so the
+prepare after resume starts it again.
+---
+ sound/soc/qcom/sc8280xp.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/sound/soc/qcom/sc8280xp.c b/sound/soc/qcom/sc8280xp.c
+--- a/sound/soc/qcom/sc8280xp.c
++++ b/sound/soc/qcom/sc8280xp.c
+@@ -289,8 +289,17 @@
+ static int sc8280xp_snd_suspend_post(struct snd_soc_card *card)
+ {
+ 	struct sc8280xp_snd_data *pdata = snd_soc_card_get_drvdata(card);
++	struct snd_soc_pcm_runtime *rtd;
++	int dir;
+ 
+ 	snd_soc_dpcm_mutex_lock(card);
++	for_each_card_rtds(card, rtd) {
++		if (!rtd->dai_link->no_pcm)
++			continue;
++		for_each_pcm_streams(dir)
++			if (rtd->dpcm[dir].state == SND_SOC_DPCM_STATE_SUSPEND)
++				sc8280xp_snd_hw_free(snd_soc_dpcm_get_substream(rtd, dir));
++	}
+ 	if (pdata->mi2s_clk_count)
+ 		clk_disable_unprepare(pdata->i2s_clk);
+ 	pdata->mi2s_clk_suspended = true;

@@ -944,6 +944,10 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
 - `patches/0084-ASoC-codecs-wcd939x-sdw-ignore-RX-device-interrupts.patch`
   source: armada
   upstream: local
+- `patches/0085-ASoC-qcom-sc8280xp-release-SoundWire-streams-across-system-suspend.patch`
+  source: armada
+  upstream: local
+  notes: Builds on 0531's suspend_post.
 - `patches/0565-pinctrl-qcom-sm8650-lpass-lpi-force-runtime-suspend-across-system-sleep.patch`
   source: armada
   upstream: local
